@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Financeiro</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bs-primary: #FF8200;
+            --bs-primary-rgb: 255, 130, 0;
+            --bs-secondary: #6f7072;
+            --bs-secondary-rgb: 111, 112, 114;
+        }
+        body {
+            background-color: #ecedec;
+        }
+        header.app-header {
+            background-color: #6f7072;
+        }
+        .btn-primary {
+            background-color: #FF8200;
+            border-color: #FF8200;
+        }
+        .btn-primary:hover,
+        .btn-primary:focus {
+            background-color: #e07600;
+            border-color: #e07600;
+        }
+        .accordion-button:not(.collapsed) {
+            background-color: #ecedec;
+            color: #212529;
+            box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .125);
+        }
+        .accordion-button:focus {
+            box-shadow: 0 0 0 0.25rem rgba(255, 130, 0, .25);
+        }
+        .saldo-negativo {
+            color: #dc3545 !important;
+            font-weight: 700;
+        }
+        .saldo-positivo {
+            color: #198754;
+            font-weight: 700;
+        }
+        .card {
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="app-header text-white py-3 mb-4 shadow-sm">
+        <div class="container">
+            <h3 class="mb-0">Dashboard Financeiro</h3>
+        </div>
+    </header>
+
+    <div class="container pb-5">
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Orçamento</h5>
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="inputOrcamento" class="form-label">Orçamento mensal base (R$)</label>
+                        <input type="number" step="0.01" min="0" class="form-control" id="inputOrcamento" placeholder="0,00">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" id="btnSalvarOrcamento" class="btn btn-primary w-100">Salvar</button>
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        <small class="text-muted d-block">Saldo acumulado ao final do ano</small>
+                        <span id="saldoAnual" class="fs-5"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion" id="accordionMeses"></div>
+
+    </div>
+
+    <template id="templateItemMes">
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-parent="#accordionMeses">
+                    <div class="d-flex w-100 justify-content-between align-items-center me-3 flex-wrap gap-2">
+                        <span class="fw-semibold nome-mes"></span>
+                        <span>
+                            <span class="badge bg-secondary me-2">Gastos: <span class="valor-gasto"></span></span>
+                            <span class="valor-saldo"></span>
+                        </span>
+                    </div>
+                </button>
+            </h2>
+            <div class="accordion-collapse collapse">
+                <div class="accordion-body">
+                    <div class="row mb-3 text-center">
+                        <div class="col-sm-4">
+                            <small class="text-muted d-block">Orçamento do mês</small>
+                            <span class="detalhe-orcamento fw-semibold"></span>
+                        </div>
+                        <div class="col-sm-4">
+                            <small class="text-muted d-block">Total de despesas</small>
+                            <span class="detalhe-gasto fw-semibold"></span>
+                        </div>
+                        <div class="col-sm-4">
+                            <small class="text-muted d-block">Saldo</small>
+                            <span class="detalhe-saldo"></span>
+                        </div>
+                    </div>
+
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Despesa</th>
+                                <th>Valor</th>
+                                <th class="text-end">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody class="lista-despesas"></tbody>
+                    </table>
+
+                    <form class="form-add-despesa row g-2">
+                        <div class="col-sm-5">
+                            <input type="text" class="form-control input-nome-despesa" placeholder="Nome da despesa" required>
+                        </div>
+                        <div class="col-sm-4">
+                            <input type="number" step="0.01" min="0.01" class="form-control input-valor-despesa" placeholder="Valor (R$)" required>
+                        </div>
+                        <div class="col-sm-3">
+                            <button type="submit" class="btn btn-primary w-100">Adicionar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    $(function () {
+        var CHAVE_STORAGE = 'dashboardFinanceiro';
+        var MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        var mesAberto = null;
+
+        function criarDadosPadrao() {
+            var meses = [];
+            for (var i = 0; i < 12; i++) {
+                meses.push({ despesas: [] });
+            }
+            return { orcamentoBase: 0, meses: meses };
+        }
+
+        function carregarDados() {
+            var bruto = localStorage.getItem(CHAVE_STORAGE);
+            if (!bruto) {
+                return criarDadosPadrao();
+            }
+            try {
+                var dados = JSON.parse(bruto);
+                if (!dados || !Array.isArray(dados.meses) || dados.meses.length !== 12) {
+                    return criarDadosPadrao();
+                }
+                return dados;
+            } catch (erro) {
+                return criarDadosPadrao();
+            }
+        }
+
+        function salvarDados() {
+            localStorage.setItem(CHAVE_STORAGE, JSON.stringify(dados));
+        }
+
+        function formatarMoeda(valor) {
+            return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        function gerarId() {
+            return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        }
+
+        function calcularMeses() {
+            var saldoAnterior = 0;
+            return dados.meses.map(function (mes, indice) {
+                var totalGasto = mes.despesas.reduce(function (soma, despesa) {
+                    return soma + despesa.valor;
+                }, 0);
+                var orcamentoMes = dados.orcamentoBase + saldoAnterior;
+                var saldo = orcamentoMes - totalGasto;
+                var resultado = {
+                    indice: indice,
+                    orcamentoMes: orcamentoMes,
+                    totalGasto: totalGasto,
+                    saldo: saldo,
+                    despesas: mes.despesas
+                };
+                saldoAnterior = saldo;
+                return resultado;
+            });
+        }
+
+        function renderizar() {
+            $('#inputOrcamento').val(dados.orcamentoBase || '');
+
+            var calculados = calcularMeses();
+            var $accordion = $('#accordionMeses').empty();
+            var $template = $('#templateItemMes');
+
+            calculados.forEach(function (mes) {
+                var $item = $($template.html());
+                var idCollapse = 'collapseMes' + mes.indice;
+                var idHeading = 'headingMes' + mes.indice;
+                var classeSaldo = mes.saldo < 0 ? 'saldo-negativo' : 'saldo-positivo';
+
+                $item.find('.accordion-header').attr('id', idHeading);
+                $item.find('.accordion-button')
+                    .attr('data-bs-target', '#' + idCollapse)
+                    .attr('aria-controls', idCollapse)
+                    .attr('data-idx', mes.indice);
+                $item.find('.accordion-collapse')
+                    .attr('id', idCollapse)
+                    .attr('aria-labelledby', idHeading);
+
+                $item.find('.nome-mes').text(MESES[mes.indice]);
+                $item.find('.valor-gasto').text(formatarMoeda(mes.totalGasto));
+                $item.find('.valor-saldo').text('Saldo: ' + formatarMoeda(mes.saldo)).addClass(classeSaldo);
+
+                $item.find('.detalhe-orcamento').text(formatarMoeda(mes.orcamentoMes));
+                $item.find('.detalhe-gasto').text(formatarMoeda(mes.totalGasto));
+                $item.find('.detalhe-saldo').text(formatarMoeda(mes.saldo)).addClass(classeSaldo);
+
+                var $tbody = $item.find('.lista-despesas');
+                if (mes.despesas.length === 0) {
+                    $tbody.append('<tr><td colspan="3" class="text-muted text-center">Nenhuma despesa cadastrada</td></tr>');
+                } else {
+                    mes.despesas.forEach(function (despesa) {
+                        var $linha = $('<tr></tr>');
+                        $linha.append($('<td></td>').text(despesa.nome));
+                        $linha.append($('<td></td>').text(formatarMoeda(despesa.valor)));
+                        var $acao = $('<td class="text-end"></td>');
+                        var $btnRemover = $('<button type="button" class="btn btn-sm btn-outline-secondary">Desfazer</button>')
+                            .attr('data-idx', mes.indice)
+                            .attr('data-id', despesa.id);
+                        $acao.append($btnRemover);
+                        $linha.append($acao);
+                        $tbody.append($linha);
+                    });
+                }
+
+                $item.find('.form-add-despesa').attr('data-idx', mes.indice);
+
+                if (mesAberto === mes.indice) {
+                    $item.find('.accordion-button').removeClass('collapsed').attr('aria-expanded', 'true');
+                    $item.find('.accordion-collapse').addClass('show');
+                }
+
+                $accordion.append($item);
+            });
+
+            var saldoFinal = calculados[11].saldo;
+            $('#saldoAnual')
+                .text(formatarMoeda(saldoFinal))
+                .removeClass('saldo-negativo saldo-positivo')
+                .addClass(saldoFinal < 0 ? 'saldo-negativo' : 'saldo-positivo');
+        }
+
+        $('#accordionMeses').on('shown.bs.collapse', function (evento) {
+            mesAberto = parseInt($(evento.target).prev('.accordion-header').find('.accordion-button').data('idx'), 10);
+        });
+        $('#accordionMeses').on('hidden.bs.collapse', function (evento) {
+            var indice = parseInt($(evento.target).prev('.accordion-header').find('.accordion-button').data('idx'), 10);
+            if (mesAberto === indice) {
+                mesAberto = null;
+            }
+        });
+
+        $('#btnSalvarOrcamento').on('click', function () {
+            var valor = parseFloat($('#inputOrcamento').val());
+            dados.orcamentoBase = isNaN(valor) ? 0 : valor;
+            salvarDados();
+            renderizar();
+        });
+
+        $(document).on('submit', '.form-add-despesa', function (evento) {
+            evento.preventDefault();
+            var $form = $(this);
+            var indice = parseInt($form.data('idx'), 10);
+            var nome = $form.find('.input-nome-despesa').val().trim();
+            var valor = parseFloat($form.find('.input-valor-despesa').val());
+
+            if (!nome || isNaN(valor) || valor <= 0) {
+                return;
+            }
+
+            dados.meses[indice].despesas.push({ id: gerarId(), nome: nome, valor: valor });
+            salvarDados();
+            renderizar();
+        });
+
+        $(document).on('click', '.lista-despesas button', function () {
+            var indice = parseInt($(this).data('idx'), 10);
+            var id = $(this).data('id');
+            dados.meses[indice].despesas = dados.meses[indice].despesas.filter(function (despesa) {
+                return despesa.id !== id;
+            });
+            salvarDados();
+            renderizar();
+        });
+
+        var dados = carregarDados();
+        renderizar();
+    });
+    </script>
+
+</body>
+</html>
